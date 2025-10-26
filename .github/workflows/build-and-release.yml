@@ -14,6 +14,12 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Clean old logs
+      run: rm -rf /home/runner/actions-runner/cached/_diag/*
+
+    - name: Clean ccache
+      run: rm -rf ~/.ccache
+
     - name: Install build dependencies
       run: |
         sudo apt-get update
@@ -38,7 +44,8 @@ jobs:
     - name: Build firmware
       run: |
         cd immortalwrt
-        make -j$(nproc) || make -j1 V=s
+        # 限制并行编译线程，降低磁盘占用
+        make -j2 || make -j1 V=s
 
     - name: Prepare release assets
       run: |
@@ -62,4 +69,3 @@ jobs:
         files: release/*.img.gz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
