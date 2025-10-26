@@ -1,0 +1,41 @@
+name: Build ImmortalWrt for NanoPi R2S eMMC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Clone ImmortalWrt source
+      run: |
+        git clone https://github.com/immortalwrt/immortalwrt.git
+        cd immortalwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        cp ../configs/nanopi-r2s-emmc-ext4.config .config
+        make defconfig
+
+    - name: Cache build
+      uses: actions/cache@v4
+      with:
+        path: immortalwrt/staging_dir
+        key: ${{ runner.os }}-immortalwrt-${{ hashFiles('configs/*.config') }}
+
+    - name: Build firmware
+      run: |
+        cd immortalwrt
+        make -j$(nproc) || make -j1 V=s
+
+    - name: Upload firmware
+      uses: actions/upload-artifact@v4
+      with:
+        name: immortalwrt-nanopi-r2s-emmc
+        path: immortalwrt/bin/targets/
