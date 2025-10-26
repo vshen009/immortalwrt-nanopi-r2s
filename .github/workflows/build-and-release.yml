@@ -1,0 +1,61 @@
+name: Build and Release ImmortalWrt for NanoPi R2S eMMC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up QEMU (for cross-compilation)
+      uses: docker/setup-qemu-action@v2
+
+    - name: Clone ImmortalWrt source
+      run: |
+        git clone https://github.com/immortalwrt/immortalwrt.git
+        cd immortalwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        cp ../configs/nanopi-r2s-emmc-ext4.config .config
+        make defconfig
+
+    - name: Cache build
+      uses: actions/cache@v4
+      with:
+        path: immortalwrt/staging_dir
+        key: ${{ runner.os }}-immortalwrt-${{ hashFiles('configs/*.config') }}
+
+    - name: Build firmware
+      run: |
+        cd immortalwrt
+        make -j$(nproc) || make -j1 V=s
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+        cp immortalwrt/bin/targets/rockchip/armv8/*ext4-sysupgrade.img.gz release/
+        cp immortalwrt/bin/targets/rockchip/armv8/*combined.img.gz release/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: "NanoPi R2S eMMC Build ${{ github.run_number }}"
+        tag_name: "v${{ github.run_number }}"
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload firmware to Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*.img.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
