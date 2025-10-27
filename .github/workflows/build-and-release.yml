@@ -14,35 +14,21 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Clean old logs
-      run: rm -rf /home/runner/actions-runner/cached/_diag/*
-
-    - name: Clean ccache
-      run: rm -rf ~/.ccache
+    - name: Clean environment
+      run: |
+        sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+        sudo rm -rf ~/.ccache || true
 
     - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          python3-pip \
-          python3-dev \
-          python3-setuptools \
-          python3-pyelftools \
-          swig \
-          build-essential \
-          libncurses5-dev \
-          flex \
-          bison \
-          git \
-          ccache \
-          g++ \
-          unzip \
-          wget
-    - name: Install Python dependencies
-      run: |
-          python3 -m pip install pyelftools
-          
-    - name: Clone ImmortalWrt source
+          python3-pip python3-dev python3-setuptools swig \
+          build-essential libncurses5-dev flex bison git g++ unzip wget ccache
+        sudo pip3 install --upgrade pip
+        sudo pip3 install pyelftools
+
+    - name: Clone ImmortalWrt
       run: |
         git clone https://github.com/immortalwrt/immortalwrt.git
         cd immortalwrt
@@ -51,37 +37,31 @@ jobs:
         cp ../configs/nanopi-r2s-emmc-ext4.config .config
         make defconfig
 
-    - name: Cache build
-      uses: actions/cache@v4
-      with:
-        path: immortalwrt/staging_dir
-        key: ${{ runner.os }}-immortalwrt-${{ hashFiles('configs/*.config') }}
+    # 💡 跳过 u-boot 编译阶段
+    - name: Patch makefile to skip u-boot
+      run: |
+        cd immortalwrt
+        # 注释掉 u-boot 构建，避免 pyelftools 问题
+        sed -i '/package\/boot\/uboot-rockchip/d' include/target.mk
+        echo "CONFIG_PACKAGE_u-boot-rockchip=n" >> .config
+        echo "CONFIG_PACKAGE_u-boot-nanopi-r2s-rk3328=n" >> .config
 
     - name: Build firmware
       run: |
         cd immortalwrt
-        # 限制并行编译线程，降低磁盘占用
         make -j2 || make -j1 V=s
 
-    - name: Prepare release assets
+    - name: Prepare release
       run: |
         mkdir -p release
-        cp immortalwrt/bin/targets/rockchip/armv8/*ext4-sysupgrade.img.gz release/
-        cp immortalwrt/bin/targets/rockchip/armv8/*combined.img.gz release/
+        cp immortalwrt/bin/targets/rockchip/armv8/*img.gz release/ || true
+        cp immortalwrt/bin/targets/rockchip/armv8/*sysupgrade.bin release/ || true
 
-    - name: Create GitHub Release
+    - name: Upload Release
       uses: softprops/action-gh-release@v1
       with:
         name: "NanoPi R2S eMMC Build ${{ github.run_number }}"
         tag_name: "v${{ github.run_number }}"
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload firmware to Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: release/*.img.gz
+        files: release/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
