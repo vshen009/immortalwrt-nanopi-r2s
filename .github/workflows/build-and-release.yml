@@ -38,7 +38,10 @@ jobs:
           g++ \
           unzip \
           wget
-
+    - name: Install Python dependencies
+      run: |
+          python3 -m pip install pyelftools
+          
     - name: Clone ImmortalWrt source
       run: |
         git clone https://github.com/immortalwrt/immortalwrt.git
